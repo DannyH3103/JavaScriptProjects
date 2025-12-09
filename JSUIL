@@ -75,7 +75,7 @@
                     height: 35px; background-color: #242424;
                     display: flex; align-items: center; padding: 0 15px;
                     cursor: grab; border-bottom: 1px solid #2e2e2e; user-select: none;
-                    touch-action: none; /* Important for Pointer Events */
+                    touch-action: none;
                 }
                 .ui-lib-header:active { cursor: grabbing; }
                 .ui-lib-title { font-weight: 700; font-size: 14px; color: #ddd; }
@@ -220,15 +220,13 @@
             header.innerHTML = `<span class="ui-lib-title">${title}</span>`;
             this.window.appendChild(header);
 
-            // --- FIXED DRAGGING LOGIC (Pointer Events) ---
+            // --- DRAGGING LOGIC (Pointer Events) ---
             let isDragging = false;
             let startX, startY, initialLeft, initialTop;
 
             header.onpointerdown = (e) => {
                 isDragging = true;
-                // Capture pointer so we keep getting events even if mouse leaves the window/iframe
                 header.setPointerCapture(e.pointerId);
-                
                 const rect = this.window.getBoundingClientRect();
                 startX = e.clientX;
                 startY = e.clientY;
@@ -248,7 +246,6 @@
                 isDragging = false;
                 header.releasePointerCapture(e.pointerId);
             };
-            // ------------------------------------------------
 
             const body = document.createElement('div');
             body.className = 'ui-lib-body';
@@ -310,61 +307,95 @@
 
     class Tab {
         constructor(container) { this.container = container; }
+        
         addSection(text) {
             const label = document.createElement('div'); label.className = 'ui-lib-section-label'; label.innerText = text; this.container.appendChild(label);
         }
+        
         addLabel(text) {
             const label = document.createElement('div'); label.className = 'ui-lib-label-element'; label.innerText = text; this.container.appendChild(label);
             return { update: (t) => label.innerText = t };
         }
+        
         addParagraph(title, content) {
             const wrapper = document.createElement('div'); wrapper.className = 'ui-lib-paragraph';
             wrapper.innerHTML = `<span class="ui-lib-paragraph-title">${title}</span><span class="ui-lib-paragraph-content">${content}</span>`;
             this.container.appendChild(wrapper);
             return { update: (t, c) => { wrapper.querySelector('.ui-lib-paragraph-title').innerText = t; wrapper.querySelector('.ui-lib-paragraph-content').innerText = c; } };
         }
+        
         addButton(text, callback) {
             const btn = document.createElement('button'); btn.className = 'ui-lib-button'; btn.innerText = text;
-            btn.onclick = () => callback(); this.container.appendChild(btn); return { update: (n) => btn.innerText = n };
+            btn.onclick = () => { if (typeof callback === 'function') callback(); }; 
+            this.container.appendChild(btn); 
+            return { update: (n) => btn.innerText = n };
         }
+        
         addToggle(text, defaultValue, callback) {
             let active = defaultValue || false;
             const wrapper = document.createElement('div'); wrapper.className = 'ui-lib-toggle' + (active ? ' active' : '');
             wrapper.innerHTML = `<span class="ui-lib-toggle-label">${text}</span><div class="ui-lib-toggle-box"><div class="ui-lib-toggle-circle"></div></div>`;
-            wrapper.onclick = () => { active = !active; wrapper.classList.toggle('active', active); if (callback) callback(active); };
-            this.container.appendChild(wrapper); return { update: (val) => { active = val; wrapper.classList.toggle('active', active); callback(active); }, get: () => active };
+            wrapper.onclick = () => { 
+                active = !active; 
+                wrapper.classList.toggle('active', active); 
+                if (typeof callback === 'function') callback(active); 
+            };
+            this.container.appendChild(wrapper); 
+            return { 
+                update: (val) => { active = val; wrapper.classList.toggle('active', active); if (typeof callback === 'function') callback(active); }, 
+                get: () => active 
+            };
         }
+        
         addSlider(text, min, max, defaultValue, callback) {
-            let value = defaultValue;
+            let value = defaultValue !== undefined ? defaultValue : min;
             const container = document.createElement('div'); container.className = 'ui-lib-slider-container';
             container.innerHTML = `<div class="ui-lib-slider-header"><span>${text}</span><span class="val-display">${value}</span></div><div class="ui-lib-slider-bg"><div class="ui-lib-slider-fill" style="width: ${((value - min) / (max - min)) * 100}%"></div></div>`;
             const bg = container.querySelector('.ui-lib-slider-bg'); const fill = container.querySelector('.ui-lib-slider-fill'); const display = container.querySelector('.val-display');
+            
             const updateSlider = (e) => {
                 const rect = bg.getBoundingClientRect(); let x = e.clientX - rect.left;
                 if (x < 0) x = 0; if (x > rect.width) x = rect.width;
                 const percent = (x / rect.width); value = Math.round(min + (max - min) * percent);
-                fill.style.width = `${percent * 100}%`; display.innerText = value; if (callback) callback(value);
+                fill.style.width = `${percent * 100}%`; display.innerText = value; 
+                if (typeof callback === 'function') callback(value);
             };
             let isDragging = false;
             bg.addEventListener('mousedown', (e) => { isDragging = true; updateSlider(e); });
             document.addEventListener('mousemove', (e) => { if (isDragging) updateSlider(e); });
             document.addEventListener('mouseup', () => { isDragging = false; });
-            this.container.appendChild(container); return { update: (val) => { value = val; fill.style.width = `${((value - min) / (max - min)) * 100}%`; display.innerText = value; callback(value); }, get: () => value };
+            this.container.appendChild(container); 
+            return { 
+                update: (val) => { value = val; fill.style.width = `${((value - min) / (max - min)) * 100}%`; display.innerText = value; if (typeof callback === 'function') callback(value); }, 
+                get: () => value 
+            };
         }
+        
         addInput(placeholder, defaultValue, callback) {
             const wrapper = document.createElement('div'); wrapper.className = 'ui-lib-input-wrapper';
-            const input = document.createElement('input'); input.className = 'ui-lib-input'; input.placeholder = placeholder; input.value = defaultValue || "";
-            input.oninput = () => callback(input.value); wrapper.appendChild(input); this.container.appendChild(wrapper);
+            const input = document.createElement('input'); input.className = 'ui-lib-input'; 
+            input.placeholder = placeholder || ""; 
+            input.value = defaultValue || "";
+            input.oninput = () => { if (typeof callback === 'function') callback(input.value); }; 
+            wrapper.appendChild(input); this.container.appendChild(wrapper);
             return { update: (val) => input.value = val, get: () => input.value };
         }
+        
         addDropdown(text, options, callback) {
-            const container = document.createElement('div'); container.className = 'ui-lib-dropdown'; let current = options[0];
+            const container = document.createElement('div'); container.className = 'ui-lib-dropdown'; 
+            let current = (options && options.length > 0) ? options[0] : "";
             const btn = document.createElement('button'); btn.className = 'ui-lib-dropdown-btn'; btn.innerHTML = `${text}: ${current} <span class="ui-lib-dropdown-icon">▼</span>`;
             const list = document.createElement('div'); list.className = 'ui-lib-dropdown-list';
+            
             const renderOptions = (opts) => {
-                list.innerHTML = ''; opts.forEach(opt => {
+                list.innerHTML = ''; 
+                if(!opts) return;
+                opts.forEach(opt => {
                     const item = document.createElement('div'); item.className = 'ui-lib-dropdown-item'; item.innerText = opt;
-                    item.onclick = () => { current = opt; btn.innerHTML = `${text}: ${current} <span class="ui-lib-dropdown-icon">▼</span>`; list.classList.remove('open'); callback(current); };
+                    item.onclick = () => { 
+                        current = opt; btn.innerHTML = `${text}: ${current} <span class="ui-lib-dropdown-icon">▼</span>`; list.classList.remove('open'); 
+                        if (typeof callback === 'function') callback(current); 
+                    };
                     list.appendChild(item);
                 });
             };
@@ -372,13 +403,15 @@
             btn.onclick = (e) => { e.stopPropagation(); list.classList.toggle('open'); };
             document.addEventListener('click', (e) => { if(!container.contains(e.target)) list.classList.remove('open'); });
             container.appendChild(btn); container.appendChild(list); this.container.appendChild(container);
-            return { update: (newOpts) => { renderOptions(newOpts); if(newOpts.length) current = newOpts[0]; }, get: () => current };
+            return { update: (newOpts) => { renderOptions(newOpts); if(newOpts && newOpts.length) current = newOpts[0]; }, get: () => current };
         }
+        
         addColorPicker(text, defaultColor, callback) {
             const container = document.createElement('div'); container.className = 'ui-lib-color-picker';
             const label = document.createElement('span'); label.className = 'ui-lib-color-label'; label.innerText = text;
             const input = document.createElement('input'); input.type = 'color'; input.className = 'ui-lib-color-input'; input.value = defaultColor || "#ffffff";
-            input.oninput = () => callback(input.value); container.appendChild(label); container.appendChild(input); this.container.appendChild(container);
+            input.oninput = () => { if (typeof callback === 'function') callback(input.value); }; 
+            container.appendChild(label); container.appendChild(input); this.container.appendChild(container);
             return { update: (col) => input.value = col, get: () => input.value };
         }
     }
